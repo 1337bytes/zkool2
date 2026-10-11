@@ -42,46 +42,42 @@ struct ReceiveView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                content
-                    .padding(24)
-                    .frame(maxWidth: 560)
-                    .frame(maxWidth: .infinity)
+            GeometryReader { geometry in
+                let reserved: CGFloat = model.message == nil ? 336 : 376
+                let qrSide = min(440, geometry.size.width - 40, max(120, geometry.size.height - reserved))
+                let qr = selected.flatMap { try? WalletReceiveQR(address: $0.value) }
+                let inset = qr.map { qrSide * CGFloat(WalletReceiveQR.border) / $0.dimension } ?? 0
+                content(qr: qr, qrSide: qrSide, inset: inset)
+                    .frame(width: qrSide).padding(.vertical, 16)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
             .background(WalletTheme.background)
             .walletNavigationChrome()
         }
         .tint(WalletTheme.green)
         .preferredColorScheme(.dark)
+        .sheet(isPresented: $expanded) {
+            fullAddress
+            #if os(iOS)
+                .presentationDetents([.medium, .large])
+            #endif
+        }
     }
 
-    private var content: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            header
-            WalletSyncIndicator()
-            balance
-            receivingContent
-            if selected != nil {
-                Button {
-                    Task {
-                        if await model.newReceiveAddress() {
-                            selection = "main"
-                            expanded = false
-                            copiedAddress = nil
-                        }
-                    }
-                } label: { Label("New receive address", systemImage: "arrow.triangle.2.circlepath") }
-                    .buttonStyle(WalletActionStyle()).disabled(model.busy)
-                Text("Previous addresses still receive funds into this account.")
-                    .font(.footnote).foregroundStyle(Color.secondary)
+    private func content(qr: WalletReceiveQR?, qrSide: CGFloat, inset: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            header.padding(.horizontal, inset)
+            balance.padding(.horizontal, inset)
+            receivingContent(qr: qr, qrSide: qrSide, inset: inset)
+            if let message = model.message {
+                Text(message).font(.footnote).foregroundStyle(WalletTheme.coral).lineLimit(2)
             }
-            if let message = model.message { Text(message).foregroundStyle(WalletTheme.coral) }
         }
     }
 
     private var header: some View {
         HStack {
-            Text(model.selectedAccount?.name ?? "Receive Zcash").font(.headline)
+            Text(model.selectedAccount?.name ?? "Receive Zcash").font(.headline).lineLimit(1).minimumScaleFactor(0.75)
             Spacer()
             Button { dismiss() } label: {
                 Image(systemName: "xmark").padding(10)
@@ -92,15 +88,15 @@ struct ReceiveView: View {
     }
 
     @ViewBuilder
-    private var receivingContent: some View {
+    private func receivingContent(qr: WalletReceiveQR?, qrSide: CGFloat, inset: CGFloat) -> some View {
         if let address = selected {
-            if let qr = try? WalletReceiveQR(address: address.value) {
+            if let qr {
                 WalletReceiveQRView(qr: qr)
-                    .frame(maxWidth: 440)
+                    .frame(width: qrSide, height: qrSide)
                     .frame(maxWidth: .infinity)
-                addressDetails(address)
-                selector
-                actions(address, qr: qr)
+                addressDetails(address).padding(.horizontal, inset)
+                selector.padding(.horizontal, inset)
+                actions(address, qr: qr).padding(.horizontal, inset)
             } else {
                 Text("This address could not be encoded as a QR code.")
                     .foregroundStyle(WalletTheme.coral)
@@ -125,10 +121,11 @@ struct ReceiveView: View {
     private func copyButton(_ address: ReceivingAddress) -> some View {
         let copied = copiedAddress == address.value
         return Button { copy(address.value) } label: {
-            Label(copied ? "Copied" : "Copy address",
-                  systemImage: copied ? "checkmark" : "doc.on.doc")
+            Label(copied ? "Copied" : "Copy",
+                  systemImage: copied ? "checkmark" : "doc.on.doc").frame(height: 18)
         }
         .buttonStyle(WalletActionStyle(primary: true))
+        .accessibilityLabel("Copy receiving address")
     }
 
     private func shareMenu(_ address: ReceivingAddress, qr: WalletReceiveQR) -> some View {
@@ -141,7 +138,7 @@ struct ReceiveView: View {
                 Label("Share QR as SVG", systemImage: "qrcode")
             }
         } label: {
-            Label("Share", systemImage: "square.and.arrow.up")
+            Label("Share", systemImage: "square.and.arrow.up").frame(height: 18)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
@@ -172,12 +169,28 @@ struct ReceiveView: View {
                 }.frame(maxWidth: .infinity).padding(.vertical, 12)
             }.buttonStyle(.plain).foregroundStyle(Color.white)
                 .accessibilityLabel(expanded ? "Collapse full address" : "Show full address")
-            if expanded {
-                Text(address.value).font(WalletFont.numbers(13)).textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading).padding(16).background(WalletTheme.surface)
-                    .accessibilityLabel("Full receiving address: \(address.value)")
-            }
         }
+    }
+
+    private var fullAddress: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    HStack {
+                        Text("Receiving address").font(.title2.bold())
+                        Spacer()
+                        Button { expanded = false } label: { Image(systemName: "xmark").padding(10) }
+                            .buttonStyle(.plain).accessibilityLabel("Close full address")
+                    }
+                    if let address = selected {
+                        Text(address.value).font(WalletFont.numbers(14)).textSelection(.enabled)
+                        copyButton(address)
+                    }
+                    Text("Previous addresses still receive funds into this account.")
+                        .font(.footnote).foregroundStyle(Color.secondary)
+                }.padding(24)
+            }.background(WalletTheme.background).walletNavigationChrome()
+        }.tint(WalletTheme.green).preferredColorScheme(.dark)
     }
 
     private var selector: some View {
@@ -192,6 +205,17 @@ struct ReceiveView: View {
                     else { Text(option.name) }
                 }
             }
+            Divider()
+            Button {
+                Task {
+                    if await model.newReceiveAddress() {
+                        selection = "main"
+                        expanded = false
+                        copiedAddress = nil
+                    }
+                }
+            } label: { Label("New receive address", systemImage: "arrow.triangle.2.circlepath") }
+                .disabled(model.busy)
         } label: {
             HStack { Text(selected?.name ?? "Address"); Image(systemName: "chevron.down") }
         }.menuStyle(.borderlessButton).menuIndicator(.hidden).buttonStyle(.plain)

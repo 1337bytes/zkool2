@@ -91,7 +91,8 @@ struct WalletUISmoke {
             try render(model, to: outputRoot.appendingPathComponent("zkool-send-basic.png").path, screen: 1)
             try render(model, to: outputRoot.appendingPathComponent("zkool-send-advanced.png").path, screen: 2)
             try render(model, to: outputRoot.appendingPathComponent("zkool-receive.png").path, screen: 3)
-            try render(model, to: outputRoot.appendingPathComponent("zkool-receive-expanded.png").path, screen: 4)
+            try render(model, to: outputRoot.appendingPathComponent("zkool-receive-compact.png").path, screen: 7)
+            try render(model, to: outputRoot.appendingPathComponent("zkool-receive-iphone.png").path, screen: 8)
             try render(model, to: outputRoot.appendingPathComponent("zkool-message-tools.png").path, screen: 5)
             try render(model, to: outputRoot.appendingPathComponent("zkool-regtest-setup.png").path, screen: 6)
             let fixture = ["address": signed.address, "message": "Swift offline demo", "signature": signed.signature]
@@ -115,11 +116,11 @@ struct WalletUISmoke {
         for option in options {
             precondition(!option.abbreviated.contains(option.value))
             let qr = try WalletReceiveQR(address: option.value)
-            precondition(qr.svg.contains("viewBox=") && qr.svg.contains("<circle"))
+            precondition(qr.svg.contains("viewBox=") && qr.svg.contains("<rect") && qr.svg.contains("fill-rule=\"evenodd\""))
             let parser = XMLParser(data: Data(qr.svg.utf8))
             parser.shouldResolveExternalEntities = false
             precondition(parser.parse(), "Receiving SVG must be valid XML")
-            for side in [320, 640] {
+            for side in [240, 320, 640] {
                 let image = qr.image(side: side)!
                 let request = VNDetectBarcodesRequest()
                 request.symbologies = [.qr]
@@ -141,11 +142,12 @@ struct WalletUISmoke {
                 }.padding(24)
             }.background(WalletTheme.background).preferredColorScheme(.dark).tint(WalletTheme.green)) : screen == 5 ? AnyView(MessageToolsView()) : screen == 0 ? AnyView(WalletView()) :
             (screen >= 3 ? AnyView(ReceiveView(initiallyExpanded: screen == 4)) : AnyView(SendingView(initialAdvanced: screen == 2)))
-        let height: CGFloat = screen == 2 ? 1150 : 1000
+        let height: CGFloat = screen == 7 ? 580 : (screen == 8 ? 740 : (screen == 2 ? 1150 : 1000))
+        let width: CGFloat = screen == 7 ? 375 : (screen == 8 ? 390 : 420)
         let view = content.environmentObject(model).environment(\.scenePhase, .inactive)
-            .frame(width: 420, height: height)
+            .frame(width: width, height: height)
         let hosting = NSHostingView(rootView: view)
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: height),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: height),
                               styleMask: [.borderless], backing: .buffered, defer: false)
         window.contentView = hosting
         hosting.layoutSubtreeIfNeeded()
