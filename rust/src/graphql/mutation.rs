@@ -230,6 +230,7 @@ impl Mutation {
         };
         let tx_bytes = extract_transaction(&signed_pczt).await?;
         let txid = crate::pay::send(&mut client, height, &tx_bytes).await?;
+        tracing::info!(id_account, txid, "GraphQL payment broadcast completed");
         Ok(txid)
     }
 
@@ -412,6 +413,7 @@ impl<T: Send + Sync> Sink<T> for Sender<T> {
 }
 
 pub async fn run_mempool(context: Context) -> anyhow::Result<()> {
+    tracing::info!("Starting GraphQL mempool monitor");
     let coin = context.coin.clone();
     let network = &coin.network();
     loop {
@@ -454,6 +456,12 @@ pub async fn run_mempool(context: Context) -> anyhow::Result<()> {
                                 let account = account as i32;
                                 let ss = SUBS.lock().await;
                                 if let Some(subs) = ss.get(&account) {
+                                    tracing::info!(
+                                        account,
+                                        txid,
+                                        subscribers = subs.len(),
+                                        "Publishing GraphQL TX notification"
+                                    );
                                     for s in subs {
                                         let _ = s
                                             .send(Ok(Event {

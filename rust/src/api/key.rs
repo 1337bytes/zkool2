@@ -111,3 +111,20 @@ pub fn get_key_pools(key: &str, c: &Coin) -> Result<u8> {
 
     Ok(0)
 }
+
+/// Rust-only access for the mobile offline-message demo. Never expose this key over FFI.
+#[cfg(feature = "graphql-core")]
+pub async fn offline_message_signing_key(
+    account: u32,
+    c: &Coin,
+) -> Result<orchard::keys::SpendingKey> {
+    let mut connection = c.get_connection().await?;
+    anyhow::ensure!(
+        crate::db::get_account_hw(&mut connection, account).await? == 0,
+        "Offline message signing requires a software account"
+    );
+    crate::db::select_account_orchard(&mut connection, account)
+        .await?
+        .xsk
+        .ok_or_else(|| anyhow::anyhow!("This account has no Orchard spending key"))
+}

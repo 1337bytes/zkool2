@@ -276,7 +276,19 @@ async fn main() -> Result<()> {
 
     let context = Context::new(coin);
     if !no_mempool {
-        tokio::spawn(run_mempool(context.clone()));
+        let mempool_context = context.clone();
+        tokio::spawn(async move {
+            loop {
+                if let Err(error) = run_mempool(mempool_context.clone()).await {
+                    // Initial database/client setup can fail before run_mempool's inner
+                    // retry loop starts. Keep subscriptions recoverable after an outage.
+                    tracing::error!(
+                        "GraphQL mempool monitor stopped; retrying in 5 seconds: {error:#}"
+                    );
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            }
+        });
     }
 
     let schema = Schema::new(Query {}, Mutation {}, Subscription {});
